@@ -1,0 +1,7 @@
+env/
+data/
+ai/
+.dockerignore
+compose.yaml
+Dockerfile
+README.Docker.md
