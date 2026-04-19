@@ -1,11 +1,12 @@
-import pandas as pd
-import numpy as np
-import os
-from sklearn.model_selection import train_test_split
+"""Backward-compatible alias for CSV testing producer.
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
+Old project used this file for feature preprocessing.
+New pipeline sends raw CSV rows to Kafka for testing.
+"""
 
-df = pd.read_csv(os.path.join(DATA_DIR, 'NF-UQ-NIDS.csv'))
+from src.kafka_producer_csv import main
 
-print(df.sample(n=5, random_state=1))
+
+if __name__ == "__main__":
+	main()
 
