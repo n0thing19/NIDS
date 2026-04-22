@@ -4,7 +4,4 @@ __pycache__/
 *.pyc
 data/
 ai/
-.dockerignore
-compose.yaml
-Dockerfile
-README.Docker.md
+

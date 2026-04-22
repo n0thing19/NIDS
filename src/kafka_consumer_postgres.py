@@ -23,7 +23,7 @@ def main() -> None:
 
     if not cfg.database_url:
         raise RuntimeError("DATABASE_URL or PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD must be set")
-
+    print("Mencoba menghubungkan ke Kafka dan Database...")
     conn = create_connection(cfg.database_url)
     init_db(conn)
 
@@ -45,6 +45,7 @@ def main() -> None:
             source = event.get("source", "unknown")
 
             if not captured_at:
+                print(f"[!] Data diabaikan karena tidak ada captured_at: {event.get('source')}")
                 continue
 
             save_event(
@@ -58,6 +59,7 @@ def main() -> None:
             )
 
             count += 1
+            print(f"[*] Menyimpan data dari source: {event.get('source')}")
             if args.max_messages and count >= args.max_messages:
                 break
     finally:
@@ -67,3 +69,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+  
