@@ -2,7 +2,7 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 
-st.set_page_config(page_title="NIDS Dashboard", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="NIDS Dashboard", layout="wide")
 
 st.markdown("""
 <style>
@@ -19,7 +19,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("# 🛡️ NIDS — Network Intrusion Detection")
+st.markdown("# NIDS — Network Intrusion Detection")
 st.markdown("---")
 
 @st.cache_data(ttl=5)
@@ -29,7 +29,7 @@ def load_data():
         dbname="nids", user="postgres", password="postgres"
     )
     df = pd.read_sql(
-        "SELECT id, captured_at, status FROM nids_alert ORDER BY captured_at ASC",
+        "SELECT id, captured_at, status FROM nids_alerts ORDER BY captured_at ASC",
         conn
     )
     conn.close()
@@ -76,7 +76,7 @@ else:
     st.warning("Tidak ada data untuk ditampilkan.")
 
 st.markdown("---")
-st.caption("Data auto-refresh setiap 5 detik · NIDS AI Engine (SOM)")
+st.caption("Data auto-refresh setiap 5 detik - NIDS AI Engine (SOM)")
 
 if st.button("Refresh Manual"):
     st.cache_data.clear()
