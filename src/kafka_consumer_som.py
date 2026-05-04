@@ -16,7 +16,7 @@ from src.db import create_connection
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-MODEL_PATH = "model/nids_som.joblib"
+MODEL_PATH = "model/nids_som_rebalanced.joblib"
 
 FEATURE_COLUMNS = [
     "PROTOCOL", "L7_PROTO",
@@ -30,13 +30,8 @@ FEATURE_COLUMNS = [
     "TCP_WIN_MAX_IN", "TCP_WIN_MAX_OUT",
 ]
 
-LOG_COLUMNS = {
-    "IN_BYTES", "OUT_BYTES", "IN_PKTS", "OUT_PKTS",
-    "FLOW_DURATION_MILLISECONDS", "DURATION_IN", "DURATION_OUT",
-    "SRC_TO_DST_AVG_THROUGHPUT", "DST_TO_SRC_AVG_THROUGHPUT",
-    "TCP_WIN_MAX_IN", "TCP_WIN_MAX_OUT",
-}
 
+# UPDATE: Menambahkan kolom som_x dan som_y untuk visualisasi map
 CREATE_ALERTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS nids_alerts (
     id BIGSERIAL PRIMARY KEY,
@@ -47,6 +42,8 @@ CREATE TABLE IF NOT EXISTS nids_alerts (
     status TEXT,
     accuracy_percent REAL,
     distance REAL,
+    som_x INTEGER,
+    som_y INTEGER,
     in_bytes BIGINT,
     out_bytes BIGINT,
     protocol INTEGER,
@@ -54,11 +51,12 @@ CREATE TABLE IF NOT EXISTS nids_alerts (
 );
 """
 
+# UPDATE: Menambahkan placeholder untuk som_x dan som_y
 INSERT_ALERT_SQL = """
 INSERT INTO nids_alerts (
     captured_at, src_ip, dst_ip, application, status,
-    accuracy_percent, distance, in_bytes, out_bytes, protocol
-) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+    accuracy_percent, distance, som_x, som_y, in_bytes, out_bytes, protocol
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
 """
 
 
@@ -93,10 +91,18 @@ def extract_features(packet_data: dict) -> np.ndarray:
     for col in FEATURE_COLUMNS:
         val = packet_data.get(col, 0)
         val = float(val) if val is not None else 0.0
-        if col in LOG_COLUMNS:
-            val = np.log1p(val)
+        
+        # 3. KUNCI PERBAIKAN: Di training, np.log1p diterapkan ke SEMUA fitur
+        # Tambahkan max(0.0, val) untuk berjaga-jaga jika ada paket bernilai negatif
+        val = np.log1p(max(0.0, val))
+        
         raw_vals.append(val)
-    return np.array(raw_vals, dtype=np.float64)
+        
+    arr = np.array(raw_vals, dtype=np.float64)
+    # 4. Mirroring pembersihan NaN/Infinity yang dilakukan di proses training
+    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=-1.0)
+    
+    return arr
 
 
 def compute_accuracy(dist: float, dist_ref: float) -> float:
@@ -136,9 +142,9 @@ def main() -> None:
 
     log.info("Mesin AI Online. Memantau: %s | DB Aktif", cfg.kafka_raw_topic)
     header = f"{'TIME':<10} | {'SOURCE IP':<15} | {'STATUS':<10} | {'ACCURACY':<10} | DIST"
-    print("-" * 85)
+    print("-" * 95)
     print(header)
-    print("-" * 85)
+    print("-" * 95)
 
     try:
         for msg in consumer:
@@ -155,7 +161,7 @@ def main() -> None:
                 input_vector = scaled_vals[0]
 
                 # Inferensi SOM
-                bmu = model.winner(input_vector)
+                bmu = model.winner(input_vector) # Hasil bmu adalah tuple (x, y)
                 weights = model.get_weights()[bmu[0], bmu[1]]
                 dist = float(np.linalg.norm(input_vector - weights))
 
@@ -163,17 +169,21 @@ def main() -> None:
                 prediction = get_prediction(winner_labels, bmu)
 
                 # Output & Setup Variabel Database
-                status_str = "ANOMALY" if prediction == 1 else "NORMAL"
+                # Tambahkan ini di atasnya (Anda bebas menyesuaikan angkanya, saya sarankan 2.5 hingga 3.0)
+                DISTANCE_THRESHOLD = 2.5 
+
+                # Ubah baris status_str menjadi ini:
+                status_str = "ANOMALY" if (prediction == 1) or (dist > DISTANCE_THRESHOLD) else "NORMAL"                
                 color = "\033[91m" if status_str == "ANOMALY" else "\033[92m"
                 src_ip = packet_data.get("src_ip", "?.?.?.?")
                 dst_ip = packet_data.get("dst_ip", "?.?.?.?")
                 app_name = packet_data.get("application_name", "Unknown")
                 
-                # Menggunakan timestamp bawaan packet jika ada, atau waktu device jika tidak ada
+                # Menggunakan timestamp bawaan packet jika ada
                 captured_at = packet_data.get("captured_at", datetime.now(timezone.utc).isoformat())
                 ts_display = datetime.now().strftime("%H:%M:%S")
 
-                # 3. Simpan Deteksi ke PostgreSQL
+                # 3. Simpan Deteksi ke PostgreSQL (Termasuk koordinat SOM x, y)
                 try:
                     with db_conn, db_conn.cursor() as cur:
                         cur.execute(
@@ -186,6 +196,8 @@ def main() -> None:
                                 status_str,
                                 round(accuracy, 2),
                                 round(dist, 4),
+                                int(bmu[0]), # som_x
+                                int(bmu[1]), # som_y
                                 int(packet_data.get("IN_BYTES", 0)),
                                 int(packet_data.get("OUT_BYTES", 0)),
                                 int(packet_data.get("PROTOCOL", 0))
@@ -201,12 +213,12 @@ def main() -> None:
                     print(
                         f"[{ts_display}] | {src_ip:<15} | {color}{status_str:<10}\033[0m "
                         f"| {accuracy:>8.2f}% | Dist: {dist:.4f} "
-                        f"| App: {app_short:<12} | Bytes: {in_bytes}"
+                        f"| BMU: ({bmu[0]},{bmu[1]}) | App: {app_short:<12}"
                     )
                 else:
                     print(
                         f"[{ts_display}] | {src_ip:<15} | {color}{status_str:<10}\033[0m "
-                        f"| {accuracy:>8.2f}% | Dist: {dist:.4f}"
+                        f"| {accuracy:>8.2f}% | Dist: {dist:.4f} | BMU: ({bmu[0]},{bmu[1]})"
                     )
 
             except Exception as exc:
