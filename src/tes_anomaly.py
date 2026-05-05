@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from kafka import KafkaProducer
 
-# Menggunakan loader config milik Anda agar tidak salah topic/server
 from src.config import load_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -16,9 +15,8 @@ def create_base_packet(src_ip, app_name):
     return {
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "src_ip": src_ip,
-        "dst_ip": "192.168.1.100", # Target server (Misal: Web Server Internal)
+        "dst_ip": "192.168.1.100",
         "application_name": app_name,
-        # Default normal values (akan ditimpa oleh skenario serangan)
         "PROTOCOL": 6.0, "L7_PROTO": 0.0,
         "IN_BYTES": 500.0, "OUT_BYTES": 500.0,
         "IN_PKTS": 5.0, "OUT_PKTS": 5.0,

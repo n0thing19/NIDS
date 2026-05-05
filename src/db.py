@@ -87,3 +87,55 @@ def save_event(
 
 def dump_event_json(event: Dict[str, Any]) -> str:
     return json.dumps(event, separators=(",", ":"), ensure_ascii=True)
+
+# --- SQL DDL ---
+CREATE_ALERTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS nids_alerts (
+    id            BIGSERIAL PRIMARY KEY,
+    captured_at   TIMESTAMPTZ NOT NULL,
+    src_ip        TEXT,
+    dst_ip        TEXT,
+    application   TEXT,
+    status        TEXT,
+    risk_zone     TEXT,
+    anomaly_score REAL,
+    confidence    REAL,
+    distance      REAL,
+    som_x         INTEGER,
+    som_y         INTEGER,
+    in_bytes      BIGINT,
+    out_bytes     BIGINT,
+    protocol      INTEGER,
+    abuse_score   INTEGER,
+    isp           TEXT,
+    usage_type    TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_captured_at ON nids_alerts (captured_at DESC);
+"""
+
+CREATE_IP_REPUTATION_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS ip_reputation_cache (
+    ip          TEXT PRIMARY KEY,
+    abuse_score INTEGER      NOT NULL DEFAULT 0,
+    isp         TEXT         NOT NULL DEFAULT '',
+    usage_type  TEXT         NOT NULL DEFAULT '',
+    checked_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+"""
+
+# --- SQL DML ---
+INSERT_ALERT_SQL = """
+INSERT INTO nids_alerts (
+    captured_at, src_ip, dst_ip, application, status, risk_zone,
+    anomaly_score, confidence, distance, som_x, som_y,
+    in_bytes, out_bytes, protocol,
+    abuse_score, isp, usage_type
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+"""
+
+def init_nids_tables(conn: PgConnection) -> None:
+    """Inisialisasi semua tabel yang dibutuhkan untuk NIDS SOM"""
+    with conn, conn.cursor() as cur:
+        cur.execute(CREATE_ALERTS_TABLE_SQL)
+        cur.execute(CREATE_IP_REPUTATION_TABLE_SQL)

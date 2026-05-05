@@ -67,6 +67,22 @@ services:
       - PGUSER=${PGUSER}
       - PGPASSWORD=${PGPASSWORD}
     command: python -m src.kafka_consumer_som
+  
+  dashboard:
+    build: .
+    container_name: nids-dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - PGUSER=${PGUSER}
+      - PGPASSWORD=${PGPASSWORD}
+      - PGDATABASE=${PGDATABASE}
+    command: streamlit run app.py
+
 
 volumes:
   postgres_data:
